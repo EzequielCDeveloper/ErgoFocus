@@ -1,0 +1,37 @@
+# dependencies
+node_modules/
+
+# expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+/ios
+/android
+
+# metro
+.metro-health-check*
+
+# native
+.kotlin/
+.gradle/
+local.properties
+**/android/build/
+*.apk
+*.aab
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# env
+.env*
+!.env.example
+
+# logs / os
+*.log
+coverage/
+.DS_Store
+*.tsbuildinfo
