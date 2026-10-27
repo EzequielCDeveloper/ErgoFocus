@@ -25,6 +25,7 @@ import {
 } from '../notifications';
 import { startCheckout, verifySubscription } from '../lib/billing';
 import { formatDuration } from '../lib/format';
+import { useWearableSync } from '../wearable/useWearableSync';
 import {
   canScheduleExactAlarms,
   openExactAlarmSettings,
@@ -275,6 +276,36 @@ export const DashboardTab: React.FC<Props> = ({ sensors, decibels, noiseStatus, 
     }
     if (focusStorageKey) void AsyncStorage.removeItem(focusStorageKey);
   };
+
+  // Sincronización bidireccional con la app de Smartwatch (Wear OS)
+  useWearableSync({
+    session: {
+      isActive,
+      isPaused: !isActive && remainingMs > 0 && remainingMs < focusMinutes * 60 * 1000,
+      mode: 'focus',
+      remainingSeconds: Math.ceil(displayRemaining / 1000),
+      totalSeconds: focusMinutes * 60,
+      distractionsCount: distractions,
+    },
+    ambient: {
+      noiseDb: decibels,
+      lightLux: sensors.lux,
+      sedentaryMinutes: sensors.sedentaryMinutes,
+      sedentaryAlert: sensors.sedentaryAlert,
+    },
+    onCommand: (cmd) => {
+      if (cmd.type === 'TOGGLE_PAUSE') {
+        void toggleFocus();
+      } else if (cmd.type === 'FINISH_SESSION') {
+        resetFocus();
+      } else if (cmd.type === 'START_BREAK') {
+        applyDuration(cmd.durationMinutes || 5);
+        void toggleFocus();
+      } else if (cmd.type === 'ACKNOWLEDGE_SEDENTARY') {
+        // Marcador recibido desde el reloj
+      }
+    },
+  });
 
   const applyDuration = (minutes: number) => {
     const clamped = Math.min(MAX_DURATION_MIN, Math.max(MIN_DURATION_MIN, Math.round(minutes)));

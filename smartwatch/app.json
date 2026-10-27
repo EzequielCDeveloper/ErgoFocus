@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "ErgoFocus Watch",
+    "slug": "ergofocus-watch",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "ergofocuswatch",
+    "splash": {
+      "backgroundColor": "#000000"
+    },
+    "android": {
+      "package": "com.ergofocus.smartwatch",
+      "adaptiveIcon": {
+        "backgroundColor": "#000000"
+      },
+      "permissions": [
+        "VIBRATE",
+        "WAKE_LOCK"
+      ]
+    },
+    "plugins": []
+  }
+}
