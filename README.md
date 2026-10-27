@@ -142,3 +142,11 @@ supabase/
 - El slider manual de lux y la tarjeta de temperatura/humedad/CO2 se reemplazaron por las
   lecturas reales de los sensores.
 - La pestaña Tendencias muestra promedios diarios reales de los 4 sensores.
+
+## App para Smartwatch (Wear OS Companion)
+
+Se incluye la aplicación compañera para smartwatch en la carpeta [`smartwatch/`](file:///smartwatch):
+- **Especificación técnica:** [`docs/ESPECIFICACION_TECNICA_SMARTWATCH.md`](file:///docs/ESPECIFICACION_TECNICA_SMARTWATCH.md)
+- **Principio:** Thin Companion dependiente del móvil (SSOT en la app móvil).
+- **Canal:** Google Play Services Wearable Data Layer API (`/ergofocus/state` y `/ergofocus/command`).
+- **Interfaces:** Swipe Pager de 3 pantallas circulares para Enfoque Pomodoro, Semáforo Ambiental de Ergonomía y Acciones Rápidas con Avisos Hápticos Silenciosos.

@@ -8,10 +8,15 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "tsc --noEmit",
+    "test": "node --test tests/wearable-integration.test.mjs && node tests/e2e-simulation.mjs",
+    "test:wearable": "node --test tests/wearable-integration.test.mjs",
+    "test:simulation": "node tests/e2e-simulation.mjs",
+    "sync-relay": "node scripts/sync-relay.mjs",
     "build:apk": "eas build -p android --profile preview"
   },
   "dependencies": {
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
+    "@expo/metro-runtime": "^57.0.17",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.117.3",
     "expo": "~57.0.27",
@@ -29,11 +34,13 @@
     "lucide-react-native": "^1.52.0",
     "nativewind": "4.2.7",
     "react": "19.2.3",
+    "react-dom": "^19.2.3",
     "react-native": "0.86.3",
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-svg": "15.15.4",
     "react-native-url-polyfill": "^4.0.0",
+    "react-native-web": "^0.21.4",
     "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
