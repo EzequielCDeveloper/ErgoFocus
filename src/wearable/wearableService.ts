@@ -4,6 +4,7 @@
  */
 
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
+import { requireOptionalNativeModule } from 'expo';
 import {
   SmartwatchCommand,
   SmartwatchStatePayload,
@@ -28,15 +29,20 @@ class WearableService {
 
   private initNativeBridge() {
     // Busca módulos Wear Connectivity si existen en la build nativa de Android
+    let expoModule: any = null;
+    try {
+      expoModule = requireOptionalNativeModule('WearableDataLayerModule');
+    } catch (e) {}
+
     this.nativeModule =
+      expoModule ||
       NativeModules.WearConnectivity ||
       NativeModules.WearableDataLayerModule ||
       NativeModules.RNWearDataLayer;
 
     if (this.nativeModule) {
       try {
-        this.eventEmitter = new NativeEventEmitter(this.nativeModule);
-        this.eventEmitter.addListener('onWearMessageReceived', (event: any) => {
+        const handleMessage = (event: any) => {
           if (event?.path === WEARABLE_COMMAND_PATH && event?.data) {
             try {
               const command: SmartwatchCommand =
@@ -46,7 +52,14 @@ class WearableService {
               console.warn('[WearableService] Error parsing command from watch:', err);
             }
           }
-        });
+        };
+
+        if (typeof this.nativeModule.addListener === 'function') {
+          this.nativeModule.addListener('onWearMessageReceived', handleMessage);
+        } else {
+          this.eventEmitter = new NativeEventEmitter(this.nativeModule);
+          this.eventEmitter.addListener('onWearMessageReceived', handleMessage);
+        }
       } catch (e) {
         console.log('[WearableService] Native event emitter not available in current environment');
       }

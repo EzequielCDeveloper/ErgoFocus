@@ -16,30 +16,35 @@ import {
   ConnectionStatus,
   SmartwatchCommand,
   SmartwatchStatePayload,
+  SmartwatchStats,
+  SmartwatchUserProfile,
 } from '../types';
 import { wearableClient } from '../communication/wearableClient';
+import { useAuth } from '../auth/AuthContext';
 
 // Patrón de vibración háptica especificado en la sección 5 del documento técnico
 const HAPTIC_ALERT_PATTERN = [0, 250, 100, 250];
 
-// Estado inicial alineado a la especificación técnica de ErgoFocus
+// Estado inicial para modo desconectado - espera datos reales del móvil
 const INITIAL_STATE: SmartwatchStatePayload = {
   session: {
-    isActive: true,
+    isActive: false,
     isPaused: false,
     mode: 'focus',
-    remainingSeconds: 18 * 60 + 42, // 18:42 del mockup oficial
-    totalSeconds: 25 * 60,
-    distractionsCount: 2,
+    remainingSeconds: 0,
+    totalSeconds: 0,
+    distractionsCount: 0,
   },
   ambient: {
-    noiseDb: 54,
+    noiseDb: 0,
     noiseStatus: 'optimal',
-    lightLux: 420,
+    lightLux: 0,
     lightStatus: 'optimal',
-    sedentaryMinutes: 45,
+    sedentaryMinutes: 0,
     sedentaryAlert: false,
   },
+  user: null,
+  stats: null,
   syncedAt: Date.now(),
 };
 
@@ -47,10 +52,14 @@ interface WatchContextValue {
   payload: SmartwatchStatePayload;
   connectionStatus: ConnectionStatus;
   isDemoMode: boolean;
+  user: SmartwatchUserProfile | null;
+  stats: SmartwatchStats | null;
   togglePause: () => Promise<void>;
   finishSession: () => Promise<void>;
   startBreak: (durationMinutes?: number) => Promise<void>;
   acknowledgeSedentary: () => Promise<void>;
+  requestStats: () => Promise<void>;
+  requestUserInfo: () => Promise<void>;
   toggleDemoMode: () => void;
   triggerTestHaptic: () => void;
   simulatePhoneUpdate: (updater: (prev: SmartwatchStatePayload) => SmartwatchStatePayload) => void;
@@ -59,9 +68,24 @@ interface WatchContextValue {
 const WatchContext = createContext<WatchContextValue | null>(null);
 
 export const WatchProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { session } = useAuth();
   const [payload, setPayload] = useState<SmartwatchStatePayload>(INITIAL_STATE);
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connected');
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(true); // Activo por defecto para visualización inmediata
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
+
+  const authUser: SmartwatchUserProfile | null = session?.user
+    ? {
+        id: session.user.id,
+        email: session.user.email ?? null,
+        displayName:
+          (session.user.user_metadata?.full_name as string | undefined) ||
+          (session.user.user_metadata?.name as string | undefined) ||
+          null,
+      }
+    : null;
+
+  const user = payload.user ?? authUser;
+  const stats = payload.stats ?? null;
 
   const prevSedentaryAlertRef = useRef(false);
   const prevNoiseStatusRef = useRef<'optimal' | 'warning' | 'danger'>('optimal');
@@ -100,97 +124,33 @@ export const WatchProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return unsubscribe;
   }, [checkAndTriggerHaptics]);
 
-  // Temporizador local para modo Demo / Standalone cuando no hay conexión constante con el teléfono
-  useEffect(() => {
-    if (!isDemoMode || !payload.session.isActive || payload.session.isPaused) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setPayload((prev) => {
-        if (!prev.session.isActive || prev.session.isPaused) return prev;
-        const remaining = Math.max(0, prev.session.remainingSeconds - 1);
-        return {
-          ...prev,
-          session: {
-            ...prev.session,
-            remainingSeconds: remaining,
-          },
-          syncedAt: Date.now(),
-        };
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isDemoMode, payload.session.isActive, payload.session.isPaused]);
-
   // Acciones de Usuario (RPC hacia el móvil vía MessageClient)
   const togglePause = useCallback(async () => {
     await wearableClient.sendCommand({ type: 'TOGGLE_PAUSE' });
-
-    // Actualización optimista local en caso de estar en modo demo o sin enlace activo
-    if (isDemoMode) {
-      setPayload((prev) => ({
-        ...prev,
-        session: {
-          ...prev.session,
-          isPaused: !prev.session.isPaused,
-        },
-      }));
-    }
-  }, [isDemoMode]);
+  }, []);
 
   const finishSession = useCallback(async () => {
     await wearableClient.sendCommand({ type: 'FINISH_SESSION' });
-
-    if (isDemoMode) {
-      setPayload((prev) => ({
-        ...prev,
-        session: {
-          ...prev.session,
-          isActive: false,
-          isPaused: false,
-          remainingSeconds: 0,
-        },
-      }));
-    }
-  }, [isDemoMode]);
+  }, []);
 
   const startBreak = useCallback(async (durationMinutes: number = 5) => {
     await wearableClient.sendCommand({
       type: 'START_BREAK',
       durationMinutes,
     });
-
-    if (isDemoMode) {
-      setPayload((prev) => ({
-        ...prev,
-        session: {
-          isActive: true,
-          isPaused: false,
-          mode: 'break',
-          remainingSeconds: durationMinutes * 60,
-          totalSeconds: durationMinutes * 60,
-          distractionsCount: prev.session.distractionsCount,
-        },
-      }));
-    }
-  }, [isDemoMode]);
+  }, []);
 
   const acknowledgeSedentary = useCallback(async () => {
     await wearableClient.sendCommand({ type: 'ACKNOWLEDGE_SEDENTARY' });
+  }, []);
 
-    if (isDemoMode) {
-      setPayload((prev) => ({
-        ...prev,
-        ambient: {
-          ...prev.ambient,
-          sedentaryMinutes: 0,
-          sedentaryAlert: false,
-        },
-      }));
-    }
-  }, [isDemoMode]);
+  const requestStats = useCallback(async () => {
+    await wearableClient.sendCommand({ type: 'REQUEST_STATS' });
+  }, []);
+
+  const requestUserInfo = useCallback(async () => {
+    await wearableClient.sendCommand({ type: 'REQUEST_USER_INFO' });
+  }, []);
 
   const toggleDemoMode = useCallback(() => {
     setIsDemoMode((prev) => !prev);
@@ -212,10 +172,14 @@ export const WatchProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     payload,
     connectionStatus,
     isDemoMode,
+    user,
+    stats,
     togglePause,
     finishSession,
     startBreak,
     acknowledgeSedentary,
+    requestStats,
+    requestUserInfo,
     toggleDemoMode,
     triggerTestHaptic,
     simulatePhoneUpdate,

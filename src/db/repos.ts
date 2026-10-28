@@ -213,6 +213,133 @@ export async function deleteLocalUserData(userId: string): Promise<void> {
   await db.runAsync('DELETE FROM sensor_logs WHERE user_id = ?', [userId]);
 }
 
+export async function getUserFocusStats(
+  userId: string
+): Promise<{
+  todayFocusMinutes: number;
+  todayDistractions: number;
+  streakDays: number;
+  weeklyFocusMinutes: number;
+}> {
+  const today = localDayKey(new Date());
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  const weekStart = localDayKey(sevenDaysAgo);
+
+  try {
+    // Try to get from Supabase sensor_daily if available
+    if (supabase) {
+      const { data } = await supabase
+        .from('sensor_daily')
+        .select('sensor, day, avg, sample_count')
+        .eq('user_id', userId)
+        .gte('day', weekStart)
+        .order('day', { ascending: true });
+
+      if (data && data.length > 0) {
+        let todayFocusMinutes = 0;
+        let todayDistractions = 0;
+        let weeklyFocusMinutes = 0;
+
+        for (const row of data) {
+          if (row.sensor === 'movement' || row.sensor === 'gyro') {
+            // Approximate focus from movement patterns if available
+            if (row.day === today) {
+              todayDistractions += Math.round(row.sample_count || 0);
+            }
+          }
+          // If we have other sensors, could calculate focus
+          weeklyFocusMinutes += Math.round((row.avg || 0) / 60);
+        }
+
+        // Also try to get from local SQLite for more accurate data
+        const db = await getDb();
+        const todayLogs = await db.getAllAsync<{ value: number }>(
+          'SELECT value FROM sensor_logs WHERE user_id = ? AND created_at >= ?',
+          [userId, new Date(new Date().setHours(0,0,0,0)).toISOString()]
+        );
+        if (todayLogs.length > 0) {
+          todayDistractions = todayLogs.filter(l => l.value > 0.5).length;
+        }
+
+        // Calculate streak from consecutive days with activity
+        const daysWithActivity = new Set(data.map(d => d.day));
+        let streak = 0;
+        const checkDate = new Date();
+        while (true) {
+          const key = localDayKey(checkDate);
+          if (daysWithActivity.has(key)) {
+            streak++;
+            checkDate.setDate(checkDate.getDate() - 1);
+          } else {
+            break;
+          }
+          if (streak > 365) break;
+        }
+
+        return {
+          todayFocusMinutes: Math.max(0, todayFocusMinutes || Math.floor(weeklyFocusMinutes / 7)),
+          todayDistractions,
+          streakDays: streak,
+          weeklyFocusMinutes: Math.max(0, weeklyFocusMinutes),
+        };
+      }
+    }
+
+    // Fallback to local SQLite
+    const db = await getDb();
+    const todayStart = new Date(new Date().setHours(0,0,0,0)).toISOString();
+    const weekStartIso = sevenDaysAgo.toISOString();
+
+    const todayLogs = await db.getAllAsync<{ value: number }>(
+      'SELECT value FROM sensor_logs WHERE user_id = ? AND created_at >= ?',
+      [userId, todayStart]
+    );
+    const weekLogs = await db.getAllAsync<{ value: number; created_at: string }>(
+      'SELECT value, created_at FROM sensor_logs WHERE user_id = ? AND created_at >= ?',
+      [userId, weekStartIso]
+    );
+
+    const todayDistractions = todayLogs.filter(l => (l.value || 0) > 0.5).length;
+    
+    // Estimate focus minutes from activity patterns (rough estimate)
+    const activeMinutes = Math.floor(weekLogs.length / 12); // rough estimate
+
+    // Calculate streak
+    const db2 = await getDb();
+    const allDays = await db2.getAllAsync<{ day: string }>(
+      "SELECT DISTINCT date(created_at) as day FROM sensor_logs WHERE user_id = ? ORDER BY day DESC LIMIT 30",
+      [userId]
+    );
+    let streak = 0;
+    const todayKey = localDayKey(new Date());
+    for (let i = 0; i < allDays.length; i++) {
+      const expected = new Date();
+      expected.setDate(expected.getDate() - i);
+      if (allDays.find(d => d.day === localDayKey(expected))) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+
+    return {
+      todayFocusMinutes: Math.max(0, Math.floor(activeMinutes / 7)),
+      todayDistractions,
+      streakDays: streak,
+      weeklyFocusMinutes: Math.max(0, activeMinutes),
+    };
+  } catch (err) {
+    console.warn('Error getting user focus stats:', err);
+    return {
+      todayFocusMinutes: 0,
+      todayDistractions: 0,
+      streakDays: 0,
+      weeklyFocusMinutes: 0,
+    };
+  }
+}
+
 export function localDayKey(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');

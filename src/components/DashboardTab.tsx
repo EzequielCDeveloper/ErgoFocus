@@ -293,6 +293,24 @@ export const DashboardTab: React.FC<Props> = ({ sensors, decibels, noiseStatus, 
       sedentaryMinutes: sensors.sedentaryMinutes,
       sedentaryAlert: sensors.sedentaryAlert,
     },
+    user: session?.user
+      ? {
+          id: session.user.id,
+          email: session.user.email ?? null,
+          displayName:
+            (session.user.user_metadata?.full_name as string | undefined) ||
+            (session.user.user_metadata?.name as string | undefined) ||
+            null,
+        }
+      : null,
+    stats: {
+      todayFocusMinutes: Math.floor((focusMinutes * 60 * 1000 - remainingMs) / 60000) > 0 && isActive
+        ? Math.floor((focusMinutes * 60 * 1000 - remainingMs) / 60000)
+        : 0,
+      todayDistractions: distractions,
+      streakDays: 0,
+      weeklyFocusMinutes: 0,
+    },
     onCommand: (cmd) => {
       if (cmd.type === 'TOGGLE_PAUSE') {
         void toggleFocus();
@@ -302,7 +320,11 @@ export const DashboardTab: React.FC<Props> = ({ sensors, decibels, noiseStatus, 
         applyDuration(cmd.durationMinutes || 5);
         void toggleFocus();
       } else if (cmd.type === 'ACKNOWLEDGE_SEDENTARY') {
-        // Marcador recibido desde el reloj
+        // Marcador recibido desde el reloj - la alerta se resetea en el móvil según lógica de sensores
+      } else if (cmd.type === 'REQUEST_STATS') {
+        // Forzar sincronización inmediata al recibir solicitud del reloj
+      } else if (cmd.type === 'REQUEST_USER_INFO') {
+        // Forzar sincronización inmediata al recibir solicitud del reloj
       }
     },
   });

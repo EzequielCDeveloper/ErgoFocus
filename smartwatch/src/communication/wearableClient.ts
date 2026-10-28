@@ -4,6 +4,7 @@
  */
 
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
+import { requireOptionalNativeModule } from 'expo';
 import {
   SmartwatchCommand,
   SmartwatchStatePayload,
@@ -28,17 +29,20 @@ class WearableClient {
 
   private initWearableBridge() {
     // Busca módulos nativos de Wear OS Data Layer
+    let expoModule: any = null;
+    try {
+      expoModule = requireOptionalNativeModule('WearableDataLayerModule');
+    } catch (e) {}
+
     this.nativeModule =
+      expoModule ||
       NativeModules.WearConnectivity ||
       NativeModules.WearableDataLayerModule ||
       NativeModules.RNWearDataLayer;
 
     if (this.nativeModule) {
       try {
-        this.eventEmitter = new NativeEventEmitter(this.nativeModule);
-
-        // Escucha cambios en el DataItem /ergofocus/state
-        this.eventEmitter.addListener('onWearDataChanged', (event: any) => {
+        const handleDataChanged = (event: any) => {
           if (event?.path === WEARABLE_STATE_PATH && event?.data) {
             try {
               const payload: SmartwatchStatePayload =
@@ -49,16 +53,26 @@ class WearableClient {
               console.warn('[WearableClient] Error deserializing state payload:', err);
             }
           }
-        });
+        };
 
-        // Escucha eventos de conexión / desconexión de nodo móvil
-        this.eventEmitter.addListener('onWearNodeConnected', () => {
+        const handleNodeConnected = () => {
           this.isConnected = true;
-        });
+        };
 
-        this.eventEmitter.addListener('onWearNodeDisconnected', () => {
+        const handleNodeDisconnected = () => {
           this.isConnected = false;
-        });
+        };
+
+        if (typeof this.nativeModule.addListener === 'function') {
+          this.nativeModule.addListener('onWearDataChanged', handleDataChanged);
+          this.nativeModule.addListener('onWearNodeConnected', handleNodeConnected);
+          this.nativeModule.addListener('onWearNodeDisconnected', handleNodeDisconnected);
+        } else {
+          this.eventEmitter = new NativeEventEmitter(this.nativeModule);
+          this.eventEmitter.addListener('onWearDataChanged', handleDataChanged);
+          this.eventEmitter.addListener('onWearNodeConnected', handleNodeConnected);
+          this.eventEmitter.addListener('onWearNodeDisconnected', handleNodeDisconnected);
+        }
       } catch (e) {
         console.log('[WearableClient] Native Wear OS bridge running in standalone / dev mode');
       }
